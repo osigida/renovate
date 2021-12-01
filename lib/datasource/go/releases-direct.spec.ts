@@ -1,14 +1,14 @@
 import * as httpMock from '../../../test/http-mock';
 import { mocked } from '../../../test/util';
 import * as _hostRules from '../../util/host-rules';
-import * as _ds from './get-datasource';
-import { getReleases } from './releases-direct';
+import { BaseGoDatasource } from './base';
+import { GoDirectDatasource } from './releases-direct';
 
 jest.mock('../../util/host-rules');
+jest.mock('./base');
 
-jest.mock('./get-datasource');
-const ds = mocked(_ds);
-
+const datasource = new GoDirectDatasource();
+const getDatasourceSpy = jest.spyOn(BaseGoDatasource, 'getDatasource');
 const hostRules = mocked(_hostRules);
 
 describe('datasource/go/releases-direct', () => {
@@ -24,22 +24,22 @@ describe('datasource/go/releases-direct', () => {
 
   describe('getReleases', () => {
     it('returns null for null getDatasource result', async () => {
-      ds.getDatasource.mockResolvedValueOnce(null);
-      const res = await getReleases({
+      getDatasourceSpy.mockResolvedValueOnce(null);
+      const res = await datasource.getReleases({
         lookupName: 'golang.org/foo/something',
       });
       expect(res).toBeNull();
     });
     it('throws for getDatasource error', async () => {
-      ds.getDatasource.mockRejectedValueOnce(new Error('unknown'));
+      getDatasourceSpy.mockRejectedValueOnce(new Error('unknown'));
       await expect(
-        getReleases({
+        datasource.getReleases({
           lookupName: 'golang.org/foo/something',
         })
       ).rejects.toThrow();
     });
     it('processes real data', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'golang/text',
       });
@@ -49,7 +49,7 @@ describe('datasource/go/releases-direct', () => {
         .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }])
         .get('/repos/golang/text/releases?per_page=100')
         .reply(200, []);
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'golang.org/x/text',
       });
       expect(res).toMatchSnapshot();
@@ -58,7 +58,7 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('support gitlab', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'gitlab-tags',
         registryUrl: 'https://gitlab.com',
         lookupName: 'golang/text',
@@ -67,7 +67,7 @@ describe('datasource/go/releases-direct', () => {
         .scope('https://gitlab.com/')
         .get('/api/v4/projects/golang%2Ftext/repository/tags?per_page=100')
         .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }]);
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'golang.org/x/text',
       });
       expect(res).toMatchSnapshot();
@@ -76,7 +76,7 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('support self hosted gitlab private repositories', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'gitlab-tags',
         registryUrl: 'https://my.custom.domain',
         lookupName: 'golang/myrepo',
@@ -86,7 +86,7 @@ describe('datasource/go/releases-direct', () => {
         .scope('https://my.custom.domain/')
         .get('/api/v4/projects/golang%2Fmyrepo/repository/tags?per_page=100')
         .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }]);
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'my.custom.domain/golang/myrepo',
       });
       expect(res).toMatchSnapshot();
@@ -95,7 +95,7 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('support bitbucket tags', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'bitbucket-tags',
         lookupName: 'golang/text',
       });
@@ -107,7 +107,7 @@ describe('datasource/go/releases-direct', () => {
           page: 1,
           values: [{ name: 'v1.0.0' }, { name: 'v2.0.0' }],
         });
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'bitbucket.org/golang/text',
       });
       expect(res).toMatchSnapshot();
@@ -116,7 +116,7 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('support ghe', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         registryUrl: 'https://git.enterprise.com',
         lookupName: 'example/module',
@@ -127,7 +127,7 @@ describe('datasource/go/releases-direct', () => {
         .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }])
         .get('/api/v3/repos/example/module/releases?per_page=100')
         .reply(200, []);
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'git.enterprise.com/example/module',
       });
       expect(res).toMatchSnapshot();
@@ -136,15 +136,15 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('works for known servers', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'go-x/x',
       });
@@ -168,7 +168,7 @@ describe('datasource/go/releases-direct', () => {
         { lookupName: 'gopkg.in/x' },
       ];
       for (const pkg of packages) {
-        const res = await getReleases(pkg);
+        const res = await datasource.getReleases(pkg);
         expect(res.releases).toBeEmpty();
       }
       const httpCalls = httpMock.getTrace();
@@ -176,7 +176,7 @@ describe('datasource/go/releases-direct', () => {
       expect(httpCalls).toMatchSnapshot();
     });
     it('support gitlab subgroups', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'gitlab-tags',
         registryUrl: 'https://gitlab.com',
         lookupName: 'group/subgroup/repo',
@@ -187,7 +187,7 @@ describe('datasource/go/releases-direct', () => {
           '/api/v4/projects/group%2Fsubgroup%2Frepo/repository/tags?per_page=100'
         )
         .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }]);
-      const res = await getReleases({
+      const res = await datasource.getReleases({
         lookupName: 'gitlab.com/group/subgroup/repo',
       });
       expect(res).toMatchSnapshot();
@@ -196,15 +196,15 @@ describe('datasource/go/releases-direct', () => {
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('works for nested modules on github', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
@@ -223,7 +223,7 @@ describe('datasource/go/releases-direct', () => {
           .reply(200, []);
 
         const prefix = pkg.lookupName.split('/')[3];
-        const result = await getReleases(pkg);
+        const result = await datasource.getReleases(pkg);
         expect(result.releases).toHaveLength(1);
         expect(result.releases[0].version.startsWith(prefix)).toBeFalse();
 
@@ -233,11 +233,11 @@ describe('datasource/go/releases-direct', () => {
       }
     });
     it('returns none if no tags match submodules', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
@@ -255,7 +255,7 @@ describe('datasource/go/releases-direct', () => {
           .get('/repos/x/text/releases?per_page=100')
           .reply(200, []);
 
-        const result = await getReleases(pkg);
+        const result = await datasource.getReleases(pkg);
         expect(result.releases).toHaveLength(0);
 
         const httpCalls = httpMock.getTrace();
@@ -264,7 +264,7 @@ describe('datasource/go/releases-direct', () => {
       }
     });
     it('works for nested modules on github v2+ major upgrades', async () => {
-      ds.getDatasource.mockResolvedValueOnce({
+      getDatasourceSpy.mockResolvedValueOnce({
         datasource: 'github-tags',
         lookupName: 'x/text',
       });
@@ -283,7 +283,7 @@ describe('datasource/go/releases-direct', () => {
         .get('/repos/x/text/releases?per_page=100')
         .reply(200, []);
 
-      const result = await getReleases(pkg);
+      const result = await datasource.getReleases(pkg);
       expect(result.releases).toEqual([
         { gitRef: 'b/v2.0.0', version: 'v2.0.0' },
         { gitRef: 'b/v3.0.0', version: 'v3.0.0' },
